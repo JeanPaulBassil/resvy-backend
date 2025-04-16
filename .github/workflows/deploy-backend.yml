@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - "reservations-api/**"
+      - "**"
       - ".github/workflows/deploy-backend.yml"
 
 jobs:
@@ -16,13 +16,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Check directory structure
-        run: |
-          pwd
-          ls -la
-          echo "Current directory structure:"
-          find . -type d -maxdepth 2
 
       - name: Set up SSH
         uses: webfactory/ssh-agent@v0.9.0
@@ -38,10 +31,17 @@ jobs:
         run: |
           echo "${{ secrets.BACKEND_ENV_PRODUCTION }}" > .env
 
+      - name: Create destination directory on VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          script: |
+            mkdir -p ${{ secrets.VPS_DEPLOY_PATH }}
+
       - name: Transfer files to VPS
         run: |
-          pwd
-          ls -la
           rsync -avz --delete \
             --exclude 'node_modules' \
             --exclude 'dist' \
@@ -64,9 +64,6 @@ jobs:
 
             # Stop any running containers
             docker-compose -f prod.docker-compose.yaml down || true
-
-            # Pull latest Docker images if using pre-built images
-            # docker-compose -f prod.docker-compose.yaml pull
 
             # Build and start containers in detached mode
             docker-compose -f prod.docker-compose.yaml up --build -d
