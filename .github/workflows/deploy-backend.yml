@@ -1,0 +1,72 @@
+name: Deploy Backend to VPS
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "reservations-api/**"
+      - ".github/workflows/deploy-backend.yml"
+
+jobs:
+  deploy:
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.CONTABO_SSH_KEY }}
+
+      - name: Add SSH known hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Create .env file
+        working-directory: ./reservations-api
+        run: |
+          echo "${{ secrets.BACKEND_ENV_PRODUCTION }}" > .env
+
+      - name: Transfer files to VPS
+        run: |
+          rsync -avz --delete \
+            --exclude 'node_modules' \
+            --exclude 'dist' \
+            --exclude '.git' \
+            ./reservations-api/ ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:${{ secrets.VPS_DEPLOY_PATH }}
+
+      - name: Deploy on VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          script: |
+            cd ${{ secrets.VPS_DEPLOY_PATH }}
+            # Set NODE_ENV to production
+            export NODE_ENV=production
+
+            # Load environment variables if needed
+            source .env
+
+            # Stop any running containers
+            docker-compose -f prod.docker-compose.yaml down || true
+
+            # Pull latest Docker images if using pre-built images
+            # docker-compose -f prod.docker-compose.yaml pull
+
+            # Build and start containers in detached mode
+            docker-compose -f prod.docker-compose.yaml up --build -d
+
+            # Run database migrations
+            docker-compose -f prod.docker-compose.yaml exec -T reservation-api pnpm run prisma:migrate:prod
+
+            # Clean up unused Docker resources
+            docker system prune -af
+
+            echo "Deployment completed successfully!"
