@@ -17,6 +17,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Check directory structure
+        run: |
+          pwd
+          ls -la
+          echo "Current directory structure:"
+          find . -type d -maxdepth 2
+
       - name: Set up SSH
         uses: webfactory/ssh-agent@v0.9.0
         with:
@@ -28,17 +35,20 @@ jobs:
           ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
 
       - name: Create .env file
-        working-directory: ./reservations-api
         run: |
+          cd reservations-api || cd ./reservations-api
           echo "${{ secrets.BACKEND_ENV_PRODUCTION }}" > .env
 
       - name: Transfer files to VPS
         run: |
+          cd reservations-api || cd ./reservations-api || echo "Directory not found!"
+          pwd
+          ls -la
           rsync -avz --delete \
             --exclude 'node_modules' \
             --exclude 'dist' \
             --exclude '.git' \
-            ./reservations-api/ ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:${{ secrets.VPS_DEPLOY_PATH }}
+            ./ ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:${{ secrets.VPS_DEPLOY_PATH }}
 
       - name: Deploy on VPS
         uses: appleboy/ssh-action@v1.0.3
