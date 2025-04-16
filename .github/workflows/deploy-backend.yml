@@ -41,7 +41,6 @@ jobs:
 
       - name: Transfer files to VPS
         run: |
-          cd reservations-api || cd ./reservations-api || echo "Directory not found!"
           pwd
           ls -la
           rsync -avz --delete \
