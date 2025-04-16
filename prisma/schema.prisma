@@ -1,0 +1,355 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String       @id @default(uuid())
+  firebaseUid String       @unique
+  email       String       @unique
+  name        String?
+  role        Role         @default(USER)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  restaurants Restaurant[] // Relation to restaurants
+  revokedAt   DateTime?    // New field to track when the user was revoked
+}
+
+enum Role {
+  USER
+  ADMIN
+  RESTAURANT_OWNER
+}
+
+model AllowedEmail {
+  id          String   @id @default(uuid())
+  email       String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   String? // Reference to admin who created this entry
+}
+
+// Restaurant model for restaurant onboarding
+model Restaurant {
+  id           String        @id @default(uuid())
+  name         String
+  description  String?
+  address      String
+  phone        String
+  email        String
+  ownerId      String // Reference to the user who owns this restaurant
+  owner        User          @relation(fields: [ownerId], references: [id])
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  tables       Table[] // Relation to tables
+  hours        Hours[] // Relation to business hours
+  floors       Floor[] // Relation to floors
+  shifts       Shift[] // Relation to shifts
+  guests       Guest[] // Relation to guests
+  reservations Reservation[] // Add relation to reservations
+}
+
+// Floor model for restaurant floor plans
+model Floor {
+  id           String     @id @default(uuid())
+  name         String
+  type         FloorType  @default(INDOOR)
+  color        String? // Optional color field for visual distinction
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  tables       Table[] // Relation to tables
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([restaurantId, name])
+  @@index([restaurantId]) // Index for faster queries by restaurant
+}
+
+enum FloorType {
+  INDOOR
+  OUTDOOR
+  BAR
+  CUSTOM
+}
+
+// Table model for restaurant tables
+model Table {
+  id             String        @id @default(uuid())
+  name           String
+  capacity       Int
+  x              Float         @default(0)
+  y              Float         @default(0)
+  status         TableStatus   @default(AVAILABLE)
+  color          String?
+  restaurantId   String
+  restaurant     Restaurant    @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  floorId        String?
+  floor          Floor?        @relation(fields: [floorId], references: [id], onDelete: SetNull)
+  mergedTableIds String[]      @default([])
+  parentTableId  String?
+  isHidden       Boolean       @default(false)
+  isMerged       Boolean       @default(false)
+  reservations   Reservation[] // Add relation to reservations
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@unique([restaurantId, name])
+  @@index([restaurantId]) // Index for faster queries by restaurant
+  @@index([floorId]) // Index for faster queries by floor
+  @@index([parentTableId]) // Index for faster queries for merged tables
+}
+
+enum TableStatus {
+  AVAILABLE
+  OCCUPIED
+  RESERVED
+}
+
+// Hours model for restaurant business hours
+model Hours {
+  id           String     @id @default(uuid())
+  dayOfWeek    DayOfWeek
+  openTime     String // Format: HH:MM in 24-hour format
+  closeTime    String // Format: HH:MM in 24-hour format
+  isClosed     Boolean    @default(false)
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([restaurantId, dayOfWeek])
+}
+
+enum DayOfWeek {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+// Shift model for restaurant shift management
+model Shift {
+  id           String        @id @default(uuid())
+  name         String
+  startTime    String // Format: HH:MM in 24-hour format
+  endTime      String // Format: HH:MM in 24-hour format
+  days         String[] // Array of weekdays the shift applies to
+  color        String // Color for UI representation
+  active       Boolean       @default(true)
+  restaurantId String
+  restaurant   Restaurant    @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  reservations Reservation[] // Add relation to reservations
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@index([restaurantId]) // Index for faster queries by restaurant
+}
+
+// Guest model for restaurant guest management
+model Guest {
+  id                  String        @id @default(uuid())
+  name                String
+  email               String?
+  phone               String
+  tags                String[]      @default([])
+  notes               String?       @db.Text
+  visitCount          Int           @default(0)
+  lastVisit           DateTime?
+  preferredSeating    String?
+  diningPreferences   String[]      @default([])
+  dietaryRestrictions String[]      @default([])
+  allergies           String?       @db.Text
+  isVip               Boolean       @default(false)
+  restaurantId        String
+  restaurant          Restaurant    @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  reservations        Reservation[] // Add relation to reservations
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  @@index([restaurantId]) // Index for faster queries by restaurant
+  @@index([phone]) // Index for faster lookups by phone number
+}
+
+// Reservation model for managing restaurant reservations
+model Reservation {
+  id             String            @id @default(uuid())
+  tableId        String? // Optional table assignment
+  guestId        String
+  restaurantId   String
+  date           DateTime
+  startTime      DateTime
+  endTime        DateTime? // Optional end time
+  numberOfGuests Int
+  note           String?           @db.Text
+  status         ReservationStatus @default(PENDING)
+  source         ReservationSource @default(PHONE)
+  shiftId        String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  guest      Guest      @relation(fields: [guestId], references: [id], onDelete: Cascade)
+  shift      Shift?     @relation(fields: [shiftId], references: [id], onDelete: SetNull)
+  table      Table?     @relation(fields: [tableId], references: [id], onDelete: SetNull)
+
+  @@index([restaurantId])
+  @@index([date])
+  @@index([shiftId])
+  @@index([tableId])
+  @@index([guestId])
+}
+
+enum ReservationStatus {
+  PENDING
+  CONFIRMED
+  SEATED
+  COMPLETED
+  NO_SHOW
+  CANCELLED
+}
+
+enum ReservationSource {
+  PHONE
+  ONLINE
+  WALK_IN
+  OTHER
+}
+
+// New model for tracking revoked users
+model RevokedUser {
+  id          String   @id @default(uuid())
+  firebaseUid String   @unique
+  revokedAt   DateTime @default(now())
+  reason      String?
+
+  @@index([firebaseUid])
+}
+
+// model Company {
+//   id                String           @id @default(cuid())
+//   name              String           @unique
+//   createdAt         DateTime         @default(now())
+//   updatedAt         DateTime         @updatedAt
+//   companySettingsId String?
+//   isBlocked         Boolean          @default(false)
+//   companySettings   CompanySettings? @relation(fields: [companySettingsId], references: [id])
+//   entities          Entity[]
+//   users             User[]
+// }
+
+// model CompanySettings {
+//   id                String    @id @default(cuid())
+//   isTableObligatory Boolean   @default(false)
+//   createdAt         DateTime  @default(now())
+//   updatedAt         DateTime  @updatedAt
+//   Company           Company[]
+//   smsUsername       String?
+//   smsPassword       String?
+// }
+
+// model Entity {
+//   id           String          @id @default(cuid())
+//   name         String
+//   location     String
+//   companyId    String
+//   createdAt    DateTime        @default(now())
+//   updatedAt    DateTime        @updatedAt
+//   phoneNumber  String
+//   company      Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+//   settings     EntitySettings?
+//   tables       Entity_Table[]
+//   guests       Guest[]
+//   reservations Reservation[]
+//   Shift        Shift[]
+//   users        User[]
+// }
+
+// model EntitySettings {
+//   id           String           @id @default(cuid())
+//   entityId     String           @unique
+//   isSmsEnabled Boolean          @default(false)
+//   smsSenderId  String?
+//   senderState  SmsSenderIdState @default(DISABLED)
+//   entity       Entity           @relation(fields: [entityId], references: [id], onDelete: Cascade)
+// }
+
+// model Entity_Table {
+//   id            String        @id @default(cuid())
+//   entityId      String
+//   tableNumber   Int
+//   numberOfSeats Int           @default(2)
+//   entity        Entity        @relation(fields: [entityId], references: [id], onDelete: Cascade)
+//   reservations  Reservation[]
+
+//   @@unique([entityId, tableNumber])
+// }
+
+// model Reservation {
+//   id             String            @id @default(cuid())
+//   tableId        String?
+//   guestId        String
+//   date           DateTime
+//   startTime      DateTime
+//   numberOfGuests Int
+//   note           String?
+//   status         ReservationStatus
+//   createdAt      DateTime          @default(now())
+//   updatedAt      DateTime          @updatedAt
+//   source         ReservationSource @default(PHONE)
+//   entityId       String
+//   shiftId        String?
+//   entity         Entity            @relation(fields: [entityId], references: [id], onDelete: Cascade)
+//   guest          Guest             @relation(fields: [guestId], references: [id], onDelete: Cascade)
+//   shift          Shift?            @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+//   table          Entity_Table?     @relation(fields: [tableId], references: [id], onDelete: Cascade)
+// }
+
+// model Shift {
+//   id          String        @id @default(cuid())
+//   startHour   Int
+//   startMinute Int
+//   endHour     Int
+//   endMinute   Int
+//   title       String
+//   entityId    String
+//   Reservation Reservation[]
+//   entity      Entity        @relation(fields: [entityId], references: [id], onDelete: Cascade)
+// }
+
+// enum UserRole {
+//   OWNER
+//   EMPLOYEE
+//   ADMIN
+// }
+
+// enum SmsSenderIdState {
+//   DISABLED
+//   PENDING
+//   VERIFIED
+//   FAILED
+// }
+
+// enum ReservationStatus {
+//   PENDING
+//   SEATED
+//   LEFT
+//   NO_SHOW
+//   LATE
+//   CANCELLED
+//   DELETED
+//   WAITLISTED
+// }
+
+// enum ReservationSource {
+//   WALK_IN
+//   PHONE
+//   OTHER
+// }

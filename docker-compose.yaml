@@ -1,0 +1,87 @@
+services:
+  minio:
+    image: minio/minio
+    restart: unless-stopped
+    ports:
+      - ${MINIO_CONSOLE_PORT}:${MINIO_CONSOLE_PORT}
+      - ${MINIO_API_PORT}:${MINIO_API_PORT}
+    environment:
+      MINIO_ROOT_USER: ${STACKHERO_MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${STACKHERO_MINIO_SECRET_KEY}
+    command: minio server --console-address ":${MINIO_CONSOLE_PORT}" /data
+    volumes:
+      - reservation-api-miniodata:/data
+    networks:
+      - reservation-api-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${MINIO_API_PORT}"]
+      interval: 30s
+      timeout: 30s
+      retries: 10
+
+  postgres:
+    container_name: reservation-api-postgres
+    image: postgres:15-alpine
+    restart: unless-stopped
+    user: ${POSTGRES_USER}
+    environment:
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    networks:
+      - reservation-api-network
+    volumes:
+      - reservation-api-postgres-data:/var/lib/postgresql/data/
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready",
+          "-U",
+          "${POSTGRES_USER}",
+          "-d",
+          "${POSTGRES_DB}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  nestjs:
+    container_name: reservation-api-nestjs
+    build:
+      context: .
+      dockerfile: ./docker/${NODE_ENV}.Dockerfile
+    env_file:
+      - .env
+    environment:
+      - FIREBASE_SERVICE_ACCOUNT=${FIREBASE_SERVICE_ACCOUNT}
+      - FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID:-resvy-5f670}
+    networks:
+      - reservation-api-network
+    expose:
+      - ${NESTJS_PORT}
+    ports:
+      - ${NESTJS_PORT}:${NESTJS_PORT}
+      - 5555:5555
+    depends_on:
+      - postgres
+      - minio
+    volumes:
+      - ./src:/usr/src/app/src
+      - ./prisma:/usr/src/app/prisma
+
+  redis:
+    container_name: reservation-api-redis
+    image: redis:6.2-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - reservation-api-network
+    # Optional: for ephemeral dev usage, you might disable persistence:
+    command: ["redis-server", "--appendonly", "no"]
+
+volumes:
+  reservation-api-postgres-data:
+  reservation-api-miniodata:
+networks:
+  reservation-api-network:
