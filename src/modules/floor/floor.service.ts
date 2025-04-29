@@ -15,6 +15,7 @@ export class FloorService {
 
   async create(createFloorDto: CreateFloorDto, userId: string): Promise<Floor> {
     // Check if the user has permission to access this restaurant
+    console.log("createFloorDto", createFloorDto);
     await this.checkRestaurantPermission(createFloorDto.restaurantId, userId);
 
     // Check if a floor with the same name already exists in this restaurant

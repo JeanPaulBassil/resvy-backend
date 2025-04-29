@@ -31,7 +31,15 @@ export class FloorController {
     description: "The floor has been successfully created.",
     type: Floor,
   })
-  create(@Body() createFloorDto: CreateFloorDto, @Request() req) {
+  create(
+    @Body() createFloorDto: CreateFloorDto,
+    @Query("restaurantId") restaurantId: string,
+    @Request() req,
+  ) {
+    // Ensure restaurantId is set in the DTO
+    if (!createFloorDto.restaurantId) {
+      createFloorDto.restaurantId = restaurantId;
+    }
     return this.floorService.create(createFloorDto, req.user.id);
   }
 
