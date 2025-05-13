@@ -4,7 +4,12 @@ import {
   ForbiddenException,
 } from "@nestjs/common";
 import { PrismaService } from "nestjs-prisma";
-import { CreateShiftDto, UpdateShiftDto, ToggleShiftActiveDto } from "./dto";
+import {
+  CreateShiftDto,
+  UpdateShiftDto,
+  ToggleShiftActiveDto,
+  ShiftReservationCountDto,
+} from "./dto";
 import { Shift } from "./entities/shift.entity";
 
 @Injectable()
@@ -150,6 +155,51 @@ export class ShiftService {
         active: toggleDto.active,
       },
     });
+  }
+
+  /**
+   * Get reservation counts for shifts within a date range
+   */
+  async getReservationCounts(
+    restaurantId: string,
+    startDate: string,
+    endDate: string,
+    userId: string,
+  ): Promise<ShiftReservationCountDto[]> {
+    // Verify user has access to this restaurant
+    await this.verifyRestaurantAccess(restaurantId, userId);
+
+    // Convert string dates to Date objects
+    const startDateObj = new Date(startDate);
+    const endDateObj = new Date(endDate);
+
+    // Set the end date to the end of the day
+    endDateObj.setHours(23, 59, 59, 999);
+
+    // Get all reservations for this restaurant within the date range
+    const reservations = await this.prisma.reservation.groupBy({
+      by: ["shiftId", "date"],
+      where: {
+        restaurantId,
+        date: {
+          gte: startDateObj,
+          lte: endDateObj,
+        },
+        shiftId: {
+          not: null,
+        },
+      },
+      _count: {
+        id: true,
+      },
+    });
+
+    // Transform the data to match our DTO format
+    return reservations.map((item) => ({
+      shiftId: item.shiftId,
+      date: item.date.toISOString().split("T")[0], // Format as YYYY-MM-DD
+      count: item._count.id,
+    }));
   }
 
   /**

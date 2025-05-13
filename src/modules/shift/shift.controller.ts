@@ -11,13 +11,39 @@ import {
 } from "@nestjs/common";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { ShiftService } from "./shift.service";
-import { CreateShiftDto, UpdateShiftDto, ToggleShiftActiveDto } from "./dto";
+import {
+  CreateShiftDto,
+  UpdateShiftDto,
+  ToggleShiftActiveDto,
+  ShiftReservationCountDto,
+} from "./dto";
 import { Shift } from "./entities/shift.entity";
 
 @ApiTags("shifts")
 @Controller("shifts")
 export class ShiftController {
   constructor(private readonly shiftService: ShiftService) {}
+
+  @Get("reservations")
+  @ApiOperation({ summary: "Get reservation counts by shift and date range" })
+  @ApiResponse({
+    status: 200,
+    description: "Return reservation counts grouped by shift and date.",
+    type: [ShiftReservationCountDto],
+  })
+  getReservationCounts(
+    @Query("restaurantId") restaurantId: string,
+    @Query("startDate") startDate: string,
+    @Query("endDate") endDate: string,
+    @Request() req,
+  ) {
+    return this.shiftService.getReservationCounts(
+      restaurantId,
+      startDate,
+      endDate,
+      req.user.id,
+    );
+  }
 
   @Post()
   @ApiOperation({ summary: "Create a new shift" })
