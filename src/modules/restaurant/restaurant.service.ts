@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  Logger,
 } from "@nestjs/common";
 import { PrismaService } from "nestjs-prisma";
 import { CreateRestaurantDto, UpdateRestaurantDto } from "./dto";
@@ -10,6 +11,8 @@ import { Role } from "@prisma/client";
 
 @Injectable()
 export class RestaurantService {
+  private readonly logger = new Logger(RestaurantService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   async create(
@@ -24,7 +27,14 @@ export class RestaurantService {
     });
   }
 
-  async findAll(userId?: string): Promise<Restaurant[]> {
+  async findAll(
+    userId?: string,
+    includeAll: boolean = false,
+  ): Promise<Restaurant[]> {
+    this.logger.log(
+      `Finding restaurants for userId: ${userId}, includeAll: ${includeAll}`,
+    );
+
     // Check if the user is an admin
     if (userId) {
       const user = await this.prisma.user.findUnique({
@@ -32,14 +42,23 @@ export class RestaurantService {
         select: { role: true },
       });
 
-      // If the user is an admin, return all restaurants
-      if (user && user.role === Role.ADMIN) {
+      this.logger.log(`User role: ${user?.role}`);
+
+      // If the user is an admin and the request is for all restaurants
+      // Note: includeAll is true when the endpoint is /restaurants and false for /my-restaurants
+      if (user && user.role === Role.ADMIN && includeAll) {
+        this.logger.log(`Admin user accessing all restaurants`);
         return this.prisma.restaurant.findMany();
       }
     }
 
-    // Otherwise, return only the user's restaurants
+    // For non-admin users or when explicitly requesting only owned restaurants
+    // Return only the user's restaurants
     const where = userId ? { ownerId: userId } : {};
+    this.logger.log(
+      `Returning restaurants filtered by: ${JSON.stringify(where)}`,
+    );
+
     return this.prisma.restaurant.findMany({
       where,
     });

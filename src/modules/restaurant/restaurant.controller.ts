@@ -37,7 +37,7 @@ export class RestaurantController {
     type: [Restaurant],
   })
   findAll(@Request() req) {
-    return this.restaurantService.findAll(req.user.id);
+    return this.restaurantService.findAll(req.user.id, true);
   }
 
   @Get("my-restaurants")
@@ -48,7 +48,7 @@ export class RestaurantController {
     type: [Restaurant],
   })
   findMyRestaurants(@Request() req) {
-    return this.restaurantService.findAll(req.user.id);
+    return this.restaurantService.findAll(req.user.id, false);
   }
 
   @Get(":id")
