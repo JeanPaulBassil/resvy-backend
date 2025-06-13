@@ -18,4 +18,10 @@ export class ShiftReservationCountDto {
     example: 12,
   })
   count: number;
+
+  @ApiProperty({
+    description: "The total number of guests for this shift on this date",
+    example: 48,
+  })
+  guestCount: number;
 }

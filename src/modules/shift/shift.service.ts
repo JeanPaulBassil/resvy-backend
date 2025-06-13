@@ -192,6 +192,9 @@ export class ShiftService {
       _count: {
         id: true,
       },
+      _sum: {
+        numberOfGuests: true,
+      },
     });
 
     // Transform the data to match our DTO format
@@ -199,6 +202,7 @@ export class ShiftService {
       shiftId: item.shiftId,
       date: item.date.toISOString().split("T")[0], // Format as YYYY-MM-DD
       count: item._count.id,
+      guestCount: item._sum.numberOfGuests || 0,
     }));
   }
 

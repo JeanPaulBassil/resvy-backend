@@ -20,6 +20,7 @@ import { TableModule } from "../table/table.module";
 import { ShiftModule } from "../shift/shift.module";
 import { GuestModule } from "../guest/guest.module";
 import { ReservationModule } from "../reservation/reservation.module";
+import { SmsModule } from "../sms/sms.module";
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -62,6 +63,7 @@ import { ReservationModule } from "../reservation/reservation.module";
     ShiftModule,
     GuestModule,
     ReservationModule,
+    SmsModule,
     // CompanyModule,
     // EntityModule,
     // GuestModule,

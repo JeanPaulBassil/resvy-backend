@@ -71,6 +71,9 @@ importers:
       '@types/stream-json':
         specifier: ^1.7.7
         version: 1.7.7
+      axios:
+        specifier: ^1.7.2
+        version: 1.7.7(debug@4.3.7)
       bcryptjs:
         specifier: ^2.4.3
         version: 2.4.3

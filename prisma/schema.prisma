@@ -16,7 +16,7 @@ model User {
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
   restaurants Restaurant[] // Relation to restaurants
-  revokedAt   DateTime?    // New field to track when the user was revoked
+  revokedAt   DateTime? // New field to track when the user was revoked
 }
 
 enum Role {
@@ -34,24 +34,35 @@ model AllowedEmail {
   createdBy   String? // Reference to admin who created this entry
 }
 
-// Restaurant model for restaurant onboarding
+// Restaurant model for restaurant management
 model Restaurant {
   id           String        @id @default(uuid())
   name         String
-  description  String?
-  address      String
-  phone        String
-  email        String
-  ownerId      String // Reference to the user who owns this restaurant
-  owner        User          @relation(fields: [ownerId], references: [id])
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  tables       Table[] // Relation to tables
-  hours        Hours[] // Relation to business hours
-  floors       Floor[] // Relation to floors
-  shifts       Shift[] // Relation to shifts
-  guests       Guest[] // Relation to guests
-  reservations Reservation[] // Add relation to reservations
+  address      String?
+  phone        String?
+  email        String?
+  description  String?       @db.Text
+  ownerId      String // Owner/manager user ID  
+  owner        User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  tables       Table[]
+  floors       Floor[]
+  hours        Hours[]
+  shifts       Shift[]
+  guests       Guest[]
+  reservations Reservation[]
+
+  // SMS Configuration for Best2sms
+  smsEnabled     Boolean   @default(false)
+  smsUsername    String?
+  smsPassword    String?
+  smsSenderId    String?
+  smsCredits     Int?      @default(0)
+  smsLastUpdated DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerId]) // Index for faster queries by owner
 }
 
 // Floor model for restaurant floor plans

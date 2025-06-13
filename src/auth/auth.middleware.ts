@@ -16,6 +16,14 @@ export class AuthMiddleware implements NestMiddleware {
   async use(req: Request, res: Response, next: NextFunction) {
     const token = req.headers.authorization?.split("Bearer ")[1];
 
+    // Log SMS-related requests for debugging
+    if (req.url.includes("/sms/")) {
+      console.log("=== AUTH MIDDLEWARE - SMS Request ===");
+      console.log("URL:", req.url);
+      console.log("Method:", req.method);
+      console.log("Has token:", !!token);
+    }
+
     if (!token) {
       return res.status(401).json({ message: "Unauthorized" });
     }
