@@ -44,6 +44,14 @@ export class UpdateSmsConfigDto {
   @IsOptional()
   @IsString()
   senderId?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  confirmationEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  cancellationEnabled?: boolean;
 }
 
 export class RequestSenderIdDto {
@@ -77,7 +85,7 @@ export class SmsController {
     console.log("Raw request body:", req.body);
     console.log("sendSmsDto.numbers:", sendSmsDto.numbers);
     console.log("sendSmsDto.message:", sendSmsDto.message);
-    
+
     return this.smsService.sendSms(restaurantId, sendSmsDto);
   }
 
@@ -226,5 +234,65 @@ export class SmsController {
       console.error("Error in SMS getConfig:", error.message);
       throw error;
     }
+  }
+
+  @Post("test-reservation-confirmation")
+  @ApiOperation({ summary: "Test reservation confirmation SMS" })
+  @ApiResponse({
+    status: 200,
+    description: "Reservation confirmation SMS test completed",
+  })
+  @ApiParam({ name: "restaurantId", description: "Restaurant ID" })
+  async testReservationConfirmation(
+    @Param("restaurantId") restaurantId: string,
+    @Body()
+    testData: {
+      guestName: string;
+      guestPhone: string;
+      restaurantName: string;
+      startTime: string; // ISO string
+      numberOfGuests: number;
+      tableNumber?: string;
+    },
+    @Request() req,
+  ) {
+    console.log("=== Testing reservation confirmation SMS ===");
+    console.log("Restaurant ID:", restaurantId);
+    console.log("Test data:", testData);
+
+    return this.smsService.sendReservationConfirmation(restaurantId, {
+      ...testData,
+      startTime: new Date(testData.startTime),
+    });
+  }
+
+  @Post("test-reservation-cancellation")
+  @ApiOperation({ summary: "Test reservation cancellation SMS" })
+  @ApiResponse({
+    status: 200,
+    description: "Reservation cancellation SMS test completed",
+  })
+  @ApiParam({ name: "restaurantId", description: "Restaurant ID" })
+  async testReservationCancellation(
+    @Param("restaurantId") restaurantId: string,
+    @Body()
+    testData: {
+      guestName: string;
+      guestPhone: string;
+      restaurantName: string;
+      startTime: string; // ISO string
+      numberOfGuests: number;
+      tableNumber?: string;
+    },
+    @Request() req,
+  ) {
+    console.log("=== Testing reservation cancellation SMS ===");
+    console.log("Restaurant ID:", restaurantId);
+    console.log("Test data:", testData);
+
+    return this.smsService.sendReservationCancellation(restaurantId, {
+      ...testData,
+      startTime: new Date(testData.startTime),
+    });
   }
 }

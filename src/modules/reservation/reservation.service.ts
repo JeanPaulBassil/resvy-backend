@@ -6,10 +6,14 @@ import {
   AssignTableDto,
 } from "./dto";
 import { Prisma, Reservation, ReservationStatus } from "@prisma/client";
+import { SmsService } from "../sms/sms.service";
 
 @Injectable()
 export class ReservationService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly smsService: SmsService,
+  ) {}
 
   /**
    * Create a new reservation
@@ -29,12 +33,88 @@ export class ReservationService {
       endTimeObj = new Date(endTime);
     }
 
-    return this.prisma.reservation.create({
+    // Create the reservation
+    const reservation = await this.prisma.reservation.create({
       data: {
         ...rest,
         date: dateObj,
         startTime: startTimeObj,
         endTime: endTimeObj,
+      },
+      include: {
+        guest: {
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+            email: true,
+          },
+        },
+        restaurant: {
+          select: {
+            id: true,
+            name: true,
+            smsEnabled: true,
+          },
+        },
+        table: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    // Send confirmation SMS if SMS is enabled for the restaurant
+    if (reservation.restaurant.smsEnabled && reservation.guest.phone) {
+      try {
+        console.log("=== Attempting to send reservation confirmation SMS ===");
+        console.log(
+          "Restaurant SMS enabled:",
+          reservation.restaurant.smsEnabled,
+        );
+        console.log("Guest phone:", reservation.guest.phone);
+
+        const smsResult = await this.smsService.sendReservationConfirmation(
+          reservation.restaurantId,
+          {
+            guestName: reservation.guest.name,
+            guestPhone: reservation.guest.phone,
+            restaurantName: reservation.restaurant.name,
+            startTime: reservation.startTime,
+            numberOfGuests: reservation.numberOfGuests,
+            tableNumber: reservation.table?.name,
+          },
+        );
+
+        if (smsResult.success) {
+          console.log("✅ Reservation confirmation SMS sent successfully");
+        } else {
+          console.log(
+            "❌ Failed to send reservation confirmation SMS:",
+            smsResult.message,
+          );
+        }
+      } catch (error) {
+        console.error(
+          "❌ Error sending reservation confirmation SMS:",
+          error.message,
+        );
+      }
+    } else {
+      console.log("⚠️ SMS not sent - SMS disabled or no guest phone number");
+      console.log("SMS enabled:", reservation.restaurant.smsEnabled);
+      console.log("Guest phone:", reservation.guest.phone);
+    }
+
+    // Return the reservation without the extra includes to maintain API compatibility
+    return this.prisma.reservation.findUnique({
+      where: { id: reservation.id },
+      include: {
+        guest: true,
+        table: true,
+        shift: true,
       },
     });
   }
@@ -153,6 +233,21 @@ export class ReservationService {
   ): Promise<Reservation> {
     const { date, startTime, endTime, ...rest } = updateReservationDto;
 
+    // Get the current reservation to check for status changes
+    const currentReservation = await this.prisma.reservation.findUnique({
+      where: { id },
+      include: {
+        guest: true,
+        restaurant: true,
+        table: true,
+        shift: true,
+      },
+    });
+
+    if (!currentReservation) {
+      throw new NotFoundException(`Reservation with ID ${id} not found`);
+    }
+
     // Prepare data object for update
     const data: Prisma.ReservationUpdateInput = { ...rest };
 
@@ -169,15 +264,65 @@ export class ReservationService {
       data.endTime = new Date(endTime);
     }
 
-    return this.prisma.reservation.update({
+    // Check if status is being changed to CANCELLED
+    const isBeingCancelled =
+      updateReservationDto.status === "CANCELLED" &&
+      currentReservation.status !== "CANCELLED";
+
+    // Update the reservation
+    const updatedReservation = await this.prisma.reservation.update({
       where: { id },
       data,
       include: {
         guest: true,
+        restaurant: true,
         table: true,
         shift: true,
       },
     });
+
+    // Send cancellation SMS if status changed to CANCELLED
+    if (
+      isBeingCancelled &&
+      currentReservation.restaurant.smsEnabled &&
+      currentReservation.guest.phone
+    ) {
+      console.log(
+        "=== Attempting to send reservation cancellation SMS (status change) ===",
+      );
+      console.log(
+        "Restaurant SMS enabled:",
+        currentReservation.restaurant.smsEnabled,
+      );
+      console.log("Guest phone:", currentReservation.guest.phone);
+
+      try {
+        const smsResult = await this.smsService.sendReservationCancellation(
+          currentReservation.restaurantId,
+          {
+            guestName: currentReservation.guest.name,
+            guestPhone: currentReservation.guest.phone,
+            restaurantName: currentReservation.restaurant.name,
+            startTime: currentReservation.startTime,
+            numberOfGuests: currentReservation.numberOfGuests,
+            tableNumber: currentReservation.table?.name,
+          },
+        );
+
+        if (smsResult.success) {
+          console.log("✅ Reservation cancellation SMS sent successfully");
+        } else {
+          console.log(
+            "❌ Failed to send reservation cancellation SMS:",
+            smsResult.message,
+          );
+        }
+      } catch (error) {
+        console.error("Error sending reservation cancellation SMS:", error);
+      }
+    }
+
+    return updatedReservation;
   }
 
   /**
@@ -214,8 +359,56 @@ export class ReservationService {
    * Remove a reservation
    */
   async remove(id: string): Promise<Reservation> {
-    // Check if reservation exists
-    await this.findOne(id);
+    // Get the reservation with all related data before deleting
+    const reservation = await this.prisma.reservation.findUnique({
+      where: { id },
+      include: {
+        guest: true,
+        restaurant: true,
+        table: true,
+        shift: true,
+      },
+    });
+
+    if (!reservation) {
+      throw new NotFoundException(`Reservation with ID ${id} not found`);
+    }
+
+    // Send cancellation SMS if SMS is enabled and guest has phone
+    if (reservation.restaurant.smsEnabled && reservation.guest.phone) {
+      console.log("=== Attempting to send reservation cancellation SMS ===");
+      console.log("Restaurant SMS enabled:", reservation.restaurant.smsEnabled);
+      console.log("Guest phone:", reservation.guest.phone);
+
+      try {
+        const smsResult = await this.smsService.sendReservationCancellation(
+          reservation.restaurantId,
+          {
+            guestName: reservation.guest.name,
+            guestPhone: reservation.guest.phone,
+            restaurantName: reservation.restaurant.name,
+            startTime: reservation.startTime,
+            numberOfGuests: reservation.numberOfGuests,
+            tableNumber: reservation.table?.name,
+          },
+        );
+
+        if (smsResult.success) {
+          console.log("✅ Reservation cancellation SMS sent successfully");
+        } else {
+          console.log(
+            "❌ Failed to send reservation cancellation SMS:",
+            smsResult.message,
+          );
+        }
+      } catch (error) {
+        console.error("Error sending reservation cancellation SMS:", error);
+      }
+    } else {
+      console.log("SMS not sent - SMS disabled or no phone number");
+      console.log("SMS enabled:", reservation.restaurant.smsEnabled);
+      console.log("Guest phone:", reservation.guest.phone);
+    }
 
     // Delete the reservation
     return this.prisma.reservation.delete({

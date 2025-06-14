@@ -59,6 +59,10 @@ model Restaurant {
   smsCredits     Int?      @default(0)
   smsLastUpdated DateTime?
 
+  // SMS Notification Settings
+  smsConfirmationEnabled Boolean @default(true) // Send SMS when reservation is confirmed
+  smsCancellationEnabled Boolean @default(true) // Send SMS when reservation is cancelled
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
