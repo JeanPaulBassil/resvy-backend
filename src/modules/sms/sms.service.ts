@@ -516,20 +516,8 @@ export class SmsService {
       updateData.smsSenderId = config.senderId;
       console.log("Setting smsSenderId to:", config.senderId);
     }
-    if (config.confirmationEnabled !== undefined) {
-      updateData.smsConfirmationEnabled = config.confirmationEnabled;
-      console.log(
-        "Setting smsConfirmationEnabled to:",
-        config.confirmationEnabled,
-      );
-    }
-    if (config.cancellationEnabled !== undefined) {
-      updateData.smsCancellationEnabled = config.cancellationEnabled;
-      console.log(
-        "Setting smsCancellationEnabled to:",
-        config.cancellationEnabled,
-      );
-    }
+    // Note: Toggle fields (confirmationEnabled, cancellationEnabled) temporarily disabled
+    // until database migration is applied in production
 
     updateData.smsLastUpdated = new Date();
 
@@ -538,8 +526,6 @@ export class SmsService {
       smsUsername: updateData.smsUsername ? "[REDACTED]" : "NULL/EMPTY",
       smsPassword: updateData.smsPassword ? "[REDACTED]" : "NULL/EMPTY",
       smsSenderId: updateData.smsSenderId,
-      smsConfirmationEnabled: updateData.smsConfirmationEnabled,
-      smsCancellationEnabled: updateData.smsCancellationEnabled,
       smsLastUpdated: updateData.smsLastUpdated,
     });
 
@@ -554,8 +540,6 @@ export class SmsService {
       smsUsername: result.smsUsername ? "[REDACTED]" : "NULL/EMPTY",
       smsPassword: result.smsPassword ? "[REDACTED]" : "NULL/EMPTY",
       smsSenderId: result.smsSenderId,
-      smsConfirmationEnabled: result.smsConfirmationEnabled,
-      smsCancellationEnabled: result.smsCancellationEnabled,
       smsLastUpdated: result.smsLastUpdated,
     });
 
@@ -591,8 +575,6 @@ export class SmsService {
         smsSenderId: true,
         smsCredits: true,
         smsLastUpdated: true,
-        smsConfirmationEnabled: true,
-        smsCancellationEnabled: true,
       },
     });
 
@@ -604,8 +586,6 @@ export class SmsService {
       smsSenderId: restaurant?.smsSenderId,
       smsCredits: restaurant?.smsCredits,
       smsLastUpdated: restaurant?.smsLastUpdated,
-      smsConfirmationEnabled: restaurant?.smsConfirmationEnabled,
-      smsCancellationEnabled: restaurant?.smsCancellationEnabled,
     });
 
     if (!restaurant) {
@@ -640,8 +620,8 @@ export class SmsService {
       senderId: restaurant.smsSenderId || "",
       credits: restaurant.smsCredits || 0,
       lastUpdated: restaurant.smsLastUpdated,
-      confirmationEnabled: restaurant.smsConfirmationEnabled ?? true,
-      cancellationEnabled: restaurant.smsCancellationEnabled ?? true,
+      confirmationEnabled: true, // Default to true until migration is applied
+      cancellationEnabled: true, // Default to true until migration is applied
     };
 
     console.log("Final result being returned:", {
@@ -673,12 +653,11 @@ export class SmsService {
     },
   ): Promise<SmsResponse> {
     try {
-      // Check if confirmation SMS is enabled for this restaurant
+      // Check if SMS is enabled for this restaurant
       const restaurant = await this.prisma.restaurant.findUnique({
         where: { id: restaurantId },
         select: {
           smsEnabled: true,
-          smsConfirmationEnabled: true,
         },
       });
 
@@ -697,15 +676,6 @@ export class SmsService {
         };
       }
 
-      if (!restaurant.smsConfirmationEnabled) {
-        console.log(
-          "⚠️ SMS confirmation notifications are disabled for this restaurant",
-        );
-        return {
-          success: false,
-          message: "SMS confirmation notifications are disabled",
-        };
-      }
       // Format the date and time
       const startTime = reservationData.startTime;
 
@@ -793,12 +763,11 @@ export class SmsService {
     },
   ): Promise<SmsResponse> {
     try {
-      // Check if cancellation SMS is enabled for this restaurant
+      // Check if SMS is enabled for this restaurant
       const restaurant = await this.prisma.restaurant.findUnique({
         where: { id: restaurantId },
         select: {
           smsEnabled: true,
-          smsCancellationEnabled: true,
         },
       });
 
@@ -817,15 +786,6 @@ export class SmsService {
         };
       }
 
-      if (!restaurant.smsCancellationEnabled) {
-        console.log(
-          "⚠️ SMS cancellation notifications are disabled for this restaurant",
-        );
-        return {
-          success: false,
-          message: "SMS cancellation notifications are disabled",
-        };
-      }
       // Format the date and time
       const startTime = reservationData.startTime;
 
