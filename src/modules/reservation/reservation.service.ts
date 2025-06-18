@@ -8,6 +8,30 @@ import {
 import { Prisma, Reservation, ReservationStatus } from "@prisma/client";
 import { SmsService } from "../sms/sms.service";
 
+// Helper function to convert UTC time back to local time format
+function convertToLocalTimeString(date: Date): string {
+  // Get the timezone offset in minutes
+  const offsetMinutes = date.getTimezoneOffset();
+  
+  // Add the offset to get the local time (getTimezoneOffset returns negative values for positive offsets)
+  const localTime = new Date(date.getTime() - (offsetMinutes * 60 * 1000));
+  
+  // Format as ISO string without the Z suffix
+  return localTime.toISOString().slice(0, 19);
+}
+
+// Helper function to transform reservation for frontend
+function transformReservation(reservation: any): any {
+  if (!reservation) return reservation;
+  
+  return {
+    ...reservation,
+    startTime: convertToLocalTimeString(reservation.startTime),
+    endTime: reservation.endTime ? convertToLocalTimeString(reservation.endTime) : reservation.endTime,
+    date: reservation.date.toISOString().split('T')[0], // Keep date as YYYY-MM-DD
+  };
+}
+
 @Injectable()
 export class ReservationService {
   constructor(
@@ -25,12 +49,67 @@ export class ReservationService {
 
     // Convert string dates to Date objects
     const dateObj = new Date(date);
-    const startTimeObj = new Date(startTime);
+
+    // Handle timezone properly for local times
+    let startTimeObj: Date;
+    if (
+      startTime.endsWith("Z") ||
+      startTime.includes("+") ||
+      startTime.includes("-")
+    ) {
+      // Has timezone info, use as-is
+      startTimeObj = new Date(startTime);
+    } else {
+      // No timezone info - treat as local time by parsing components manually
+      const match = startTime.match(
+        /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/,
+      );
+      if (match) {
+        const [, year, month, day, hours, minutes, seconds] = match;
+        startTimeObj = new Date(
+          parseInt(year),
+          parseInt(month) - 1, // Month is 0-indexed
+          parseInt(day),
+          parseInt(hours),
+          parseInt(minutes),
+          parseInt(seconds),
+        );
+      } else {
+        // Fallback to regular parsing
+        startTimeObj = new Date(startTime);
+      }
+    }
 
     // Handle optional end time
     let endTimeObj: Date | undefined;
     if (endTime) {
-      endTimeObj = new Date(endTime);
+      if (
+        endTime.endsWith("Z") ||
+        endTime.includes("+") ||
+        endTime.includes("-")
+      ) {
+        // Has timezone info, use as-is
+        endTimeObj = new Date(endTime);
+      } else {
+        // No timezone info - treat as local time by parsing components manually
+        const match = endTime.match(
+          /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/,
+        );
+        if (match) {
+          const [, year, month, day, hours, minutes, seconds] = match;
+          endTimeObj = new Date(
+            parseInt(year),
+            parseInt(month) - 1, // Month is 0-indexed
+            parseInt(day),
+            parseInt(hours),
+            parseInt(minutes),
+            parseInt(seconds),
+          );
+        } else {
+          // Fallback to regular parsing
+          endTimeObj = new Date(endTime);
+        }
+      }
     }
 
     // Create the reservation
@@ -109,7 +188,7 @@ export class ReservationService {
     }
 
     // Return the reservation without the extra includes to maintain API compatibility
-    return this.prisma.reservation.findUnique({
+    const finalReservation = await this.prisma.reservation.findUnique({
       where: { id: reservation.id },
       include: {
         guest: true,
@@ -117,6 +196,8 @@ export class ReservationService {
         shift: true,
       },
     });
+    
+    return transformReservation(finalReservation);
   }
 
   /**
@@ -158,7 +239,7 @@ export class ReservationService {
       where.shiftId = shiftId;
     }
 
-    return this.prisma.reservation.findMany({
+    const reservations = await this.prisma.reservation.findMany({
       where,
       skip,
       take,
@@ -171,6 +252,9 @@ export class ReservationService {
         startTime: "asc",
       },
     });
+
+    // Transform all reservations to local time format
+    return reservations.map(transformReservation);
   }
 
   /**
@@ -192,7 +276,7 @@ export class ReservationService {
       };
     }
 
-    return this.prisma.reservation.findMany({
+    const reservations = await this.prisma.reservation.findMany({
       where,
       include: {
         guest: true,
@@ -202,6 +286,9 @@ export class ReservationService {
         startTime: "asc",
       },
     });
+
+    // Transform all reservations to local time format
+    return reservations.map(transformReservation);
   }
 
   /**
@@ -221,7 +308,7 @@ export class ReservationService {
       throw new NotFoundException(`Reservation with ID ${id} not found`);
     }
 
-    return reservation;
+    return transformReservation(reservation);
   }
 
   /**
@@ -257,11 +344,65 @@ export class ReservationService {
     }
 
     if (startTime) {
-      data.startTime = new Date(startTime);
+      // Handle timezone properly for local times
+      if (
+        startTime.endsWith("Z") ||
+        startTime.includes("+") ||
+        startTime.includes("-")
+      ) {
+        // Has timezone info, use as-is
+        data.startTime = new Date(startTime);
+      } else {
+        // No timezone info - treat as local time by parsing components manually
+        const match = startTime.match(
+          /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/,
+        );
+        if (match) {
+          const [, year, month, day, hours, minutes, seconds] = match;
+          data.startTime = new Date(
+            parseInt(year),
+            parseInt(month) - 1, // Month is 0-indexed
+            parseInt(day),
+            parseInt(hours),
+            parseInt(minutes),
+            parseInt(seconds),
+          );
+        } else {
+          // Fallback to regular parsing
+          data.startTime = new Date(startTime);
+        }
+      }
     }
 
     if (endTime) {
-      data.endTime = new Date(endTime);
+      // Handle timezone properly for local times
+      if (
+        endTime.endsWith("Z") ||
+        endTime.includes("+") ||
+        endTime.includes("-")
+      ) {
+        // Has timezone info, use as-is
+        data.endTime = new Date(endTime);
+      } else {
+        // No timezone info - treat as local time by parsing components manually
+        const match = endTime.match(
+          /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/,
+        );
+        if (match) {
+          const [, year, month, day, hours, minutes, seconds] = match;
+          data.endTime = new Date(
+            parseInt(year),
+            parseInt(month) - 1, // Month is 0-indexed
+            parseInt(day),
+            parseInt(hours),
+            parseInt(minutes),
+            parseInt(seconds),
+          );
+        } else {
+          // Fallback to regular parsing
+          data.endTime = new Date(endTime);
+        }
+      }
     }
 
     // Check if status is being changed to CANCELLED
@@ -322,7 +463,7 @@ export class ReservationService {
       }
     }
 
-    return updatedReservation;
+    return transformReservation(updatedReservation);
   }
 
   /**
@@ -344,7 +485,7 @@ export class ReservationService {
       data.note = notes;
     }
 
-    return this.prisma.reservation.update({
+    const updatedReservation = await this.prisma.reservation.update({
       where: { id },
       data,
       include: {
@@ -353,6 +494,8 @@ export class ReservationService {
         shift: true,
       },
     });
+
+    return transformReservation(updatedReservation);
   }
 
   /**
@@ -410,9 +553,11 @@ export class ReservationService {
       console.log("Guest phone:", reservation.guest.phone);
     }
 
-    // Delete the reservation
-    return this.prisma.reservation.delete({
+    // Delete the reservation and transform the result
+    const deletedReservation = await this.prisma.reservation.delete({
       where: { id },
     });
+
+    return transformReservation(deletedReservation);
   }
 }
