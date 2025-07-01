@@ -12,10 +12,10 @@ import { SmsService } from "../sms/sms.service";
 function convertToLocalTimeString(date: Date): string {
   // Get the timezone offset in minutes
   const offsetMinutes = date.getTimezoneOffset();
-  
+
   // Add the offset to get the local time (getTimezoneOffset returns negative values for positive offsets)
-  const localTime = new Date(date.getTime() - (offsetMinutes * 60 * 1000));
-  
+  const localTime = new Date(date.getTime() - offsetMinutes * 60 * 1000);
+
   // Format as ISO string without the Z suffix
   return localTime.toISOString().slice(0, 19);
 }
@@ -23,12 +23,14 @@ function convertToLocalTimeString(date: Date): string {
 // Helper function to transform reservation for frontend
 function transformReservation(reservation: any): any {
   if (!reservation) return reservation;
-  
+
   return {
     ...reservation,
     startTime: convertToLocalTimeString(reservation.startTime),
-    endTime: reservation.endTime ? convertToLocalTimeString(reservation.endTime) : reservation.endTime,
-    date: reservation.date.toISOString().split('T')[0], // Keep date as YYYY-MM-DD
+    endTime: reservation.endTime
+      ? convertToLocalTimeString(reservation.endTime)
+      : reservation.endTime,
+    date: reservation.date.toISOString().split("T")[0], // Keep date as YYYY-MM-DD
   };
 }
 
@@ -196,7 +198,7 @@ export class ReservationService {
         shift: true,
       },
     });
-    
+
     return transformReservation(finalReservation);
   }
 
@@ -318,9 +320,7 @@ export class ReservationService {
     id: string,
     updateReservationDto: UpdateReservationDto,
   ): Promise<Reservation> {
-    const { date, startTime, endTime, ...rest } = updateReservationDto;
-
-    // Get the current reservation to check for status changes
+    // First, get the current reservation to check status changes
     const currentReservation = await this.prisma.reservation.findUnique({
       where: { id },
       include: {
@@ -335,10 +335,12 @@ export class ReservationService {
       throw new NotFoundException(`Reservation with ID ${id} not found`);
     }
 
-    // Prepare data object for update
-    const data: Prisma.ReservationUpdateInput = { ...rest };
+    const { date, startTime, endTime, ...rest } = updateReservationDto;
 
-    // Handle date and time fields if provided
+    // Prepare data object for update
+    const data: any = { ...rest };
+
+    // Convert string dates to Date objects if provided
     if (date) {
       data.date = new Date(date);
     }
@@ -410,6 +412,36 @@ export class ReservationService {
       updateReservationDto.status === "CANCELLED" &&
       currentReservation.status !== "CANCELLED";
 
+    // Check if status is being changed to COMPLETED
+    const isBeingCompleted =
+      updateReservationDto.status === "COMPLETED" &&
+      currentReservation.status !== "COMPLETED";
+
+    console.log("=== Reservation Status Update Debug ===");
+    console.log(
+      "Current status:",
+      currentReservation.status,
+      "Type:",
+      typeof currentReservation.status,
+    );
+    console.log(
+      "New status:",
+      updateReservationDto.status,
+      "Type:",
+      typeof updateReservationDto.status,
+    );
+    console.log(
+      "Status comparison result:",
+      updateReservationDto.status === "COMPLETED",
+    );
+    console.log(
+      "Current not completed:",
+      currentReservation.status !== "COMPLETED",
+    );
+    console.log("Is being completed:", isBeingCompleted);
+    console.log("Guest ID:", currentReservation.guestId);
+    console.log("Update DTO:", JSON.stringify(updateReservationDto, null, 2));
+
     // Update the reservation
     const updatedReservation = await this.prisma.reservation.update({
       where: { id },
@@ -422,31 +454,68 @@ export class ReservationService {
       },
     });
 
-    // Send cancellation SMS if status changed to CANCELLED
-    if (
-      isBeingCancelled &&
-      currentReservation.restaurant.smsEnabled &&
-      currentReservation.guest.phone
-    ) {
+    // If reservation is being completed, update guest visit count
+    if (isBeingCompleted) {
       console.log(
-        "=== Attempting to send reservation cancellation SMS (status change) ===",
+        "🎯 Updating guest visit count for guest:",
+        currentReservation.guestId,
       );
-      console.log(
-        "Restaurant SMS enabled:",
-        currentReservation.restaurant.smsEnabled,
-      );
-      console.log("Guest phone:", currentReservation.guest.phone);
-
       try {
+        // First, let's check the current guest data
+        const currentGuest = await this.prisma.guest.findUnique({
+          where: { id: currentReservation.guestId },
+        });
+        console.log("📊 Current guest data before update:", {
+          id: currentGuest?.id,
+          name: currentGuest?.name,
+          currentVisitCount: currentGuest?.visitCount,
+          currentLastVisit: currentGuest?.lastVisit,
+        });
+
+        const updatedGuest = await this.prisma.guest.update({
+          where: { id: currentReservation.guestId },
+          data: {
+            visitCount: { increment: 1 },
+            lastVisit: new Date(),
+          },
+        });
+        console.log("✅ Guest visit count updated successfully:", {
+          guestId: updatedGuest.id,
+          guestName: updatedGuest.name,
+          newVisitCount: updatedGuest.visitCount,
+          lastVisit: updatedGuest.lastVisit,
+        });
+      } catch (error) {
+        console.error("❌ Failed to update guest visit count:", error);
+        console.error("Error details:", error);
+      }
+    } else {
+      console.log("❌ NOT updating guest visit count. Reason:");
+      console.log("  - isBeingCompleted:", isBeingCompleted);
+      console.log(
+        "  - Status being set to COMPLETED:",
+        updateReservationDto.status === "COMPLETED",
+      );
+      console.log(
+        "  - Current status is not COMPLETED:",
+        currentReservation.status !== "COMPLETED",
+      );
+    }
+
+    // Send cancellation SMS if SMS is enabled and reservation is being cancelled
+    if (isBeingCancelled && updatedReservation.restaurant.smsEnabled) {
+      try {
+        console.log("=== Attempting to send reservation cancellation SMS ===");
+        
         const smsResult = await this.smsService.sendReservationCancellation(
-          currentReservation.restaurantId,
+          updatedReservation.restaurantId,
           {
-            guestName: currentReservation.guest.name,
-            guestPhone: currentReservation.guest.phone,
-            restaurantName: currentReservation.restaurant.name,
-            startTime: currentReservation.startTime,
-            numberOfGuests: currentReservation.numberOfGuests,
-            tableNumber: currentReservation.table?.name,
+            guestName: updatedReservation.guest.name,
+            guestPhone: updatedReservation.guest.phone,
+            restaurantName: updatedReservation.restaurant.name,
+            startTime: updatedReservation.startTime,
+            numberOfGuests: updatedReservation.numberOfGuests,
+            tableNumber: updatedReservation.table?.name,
           },
         );
 
@@ -459,7 +528,10 @@ export class ReservationService {
           );
         }
       } catch (error) {
-        console.error("Error sending reservation cancellation SMS:", error);
+        console.error(
+          "❌ Error sending reservation cancellation SMS:",
+          error.message,
+        );
       }
     }
 

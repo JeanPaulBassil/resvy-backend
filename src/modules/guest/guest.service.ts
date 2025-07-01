@@ -125,6 +125,9 @@ export class GuestService {
     restaurantId: string,
     userId: string,
   ): Promise<Guest> {
+    // This method is for manually recording visits (e.g., walk-ins)
+    // Visits from completed reservations are automatically tracked
+    // in the reservation service when status changes to COMPLETED
     // Check if user has permission to update guests for this restaurant
     await this.checkRestaurantPermission(restaurantId, userId);
 
