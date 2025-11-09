@@ -58,6 +58,9 @@ jobs:
             cd ${{ secrets.VPS_DEPLOY_PATH }}
             # Set NODE_ENV to production
             export NODE_ENV=production
+            
+            # Set timezone to Beirut (UTC+2) - fixes reservation time display issue
+            export TZ=Asia/Beirut
 
             # Load environment variables if needed
             source .env
@@ -75,3 +78,4 @@ jobs:
             docker system prune -af
 
             echo "Deployment completed successfully!"
+            echo "Timezone: Asia/Beirut (UTC+2)"

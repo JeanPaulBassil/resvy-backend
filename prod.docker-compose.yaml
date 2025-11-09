@@ -34,6 +34,8 @@ services:
       dockerfile: ./docker/${NODE_ENV}.Dockerfile
     env_file:
       - .env
+    environment:
+      - TZ=Asia/Beirut
     networks:
       - reservation-api-network
     expose:
